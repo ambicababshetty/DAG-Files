@@ -60,4 +60,4 @@ jobs:
           gcloud composer environments storage dags list \
             --environment ${{ env.COMPOSER_ENVIRONMENT }} \
             --location ${{ env.COMPOSER_LOCATION }} \
-            --subdirectory /
+            
