@@ -1,12 +1,12 @@
 name: Deploy Airflow DAGs to Cloud Composer
- 
+
 on:
   push:
     branches: [ main ]
     paths:
       - '/**'
   workflow_dispatch:  # Allows manual triggering
- 
+
 env:
   # Direct parameters specified here instead of using secrets
   GCP_PROJECT_ID: "ox-wissp-devint"
@@ -14,7 +14,7 @@ env:
   COMPOSER_LOCATION: "us-central1"
   # NOTE: For security reasons, you should NOT put the service account key directly in this file
   # The GCP_SA_KEY must still be stored as a GitHub secret
- 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -52,12 +52,11 @@ jobs:
           gcloud composer environments storage dags import \
             --environment ${{ env.COMPOSER_ENVIRONMENT }} \
             --location ${{ env.COMPOSER_LOCATION }} \
-            --source dags/ \
+            --source / \
             --destination /
       - name: Verify deployment
         run: |
           echo "Verifying DAG deployment..."
           gcloud composer environments storage dags list \
             --environment ${{ env.COMPOSER_ENVIRONMENT }} \
-            --location ${{ env.COMPOSER_LOCATION }} \
-            
+            --location ${{ env.COMPOSER_LOCATION }}
