@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - '/**'
+      - 'dags/**'
   workflow_dispatch:  # Allows manual triggering
 
 env:
@@ -52,7 +52,7 @@ jobs:
           gcloud composer environments storage dags import \
             --environment ${{ env.COMPOSER_ENVIRONMENT }} \
             --location ${{ env.COMPOSER_LOCATION }} \
-            --source / \
+            --source dags/ \
             --destination /
       - name: Verify deployment
         run: |
