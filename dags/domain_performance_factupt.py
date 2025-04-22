@@ -160,6 +160,7 @@ WHERE
  OR COALESCE(bid.bid_cpm, 0.0) != 0
  OR SAFE_DIVIDE(bid.BidSpendInUSD, NULLIF(cpr.TotalImpressions, 0)) != 0;
 """
+
     run_query_task = PythonOperator(
         task_id='run_query_task',
         python_callable=run_bigquery_query,
