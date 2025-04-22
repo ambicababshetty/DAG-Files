@@ -82,7 +82,7 @@ cpr_base AS (
   SUM(cpr.Clicks) AS TotalClicks
  FROM `ox-wissp-devint.wissp_views.exchange_views_cpr_daily_fact_v2` cpr
  INNER JOIN domain_meta dm ON cpr.RewrittenPageURLDomain = dm.domain_name
- WHERE cpr.ReportDay = '2025-04-11'
+ WHERE cpr.ReportDay = '2025-04-16'
  GROUP BY cpr.RewrittenPageURLDomain, cpr.ReportDay, cpr.IABDistributionChannel, cpr.IABMediaSubtype, cpr.UserGeoCountry, cpr.VideoPlcmt, cpr.IABVideoPlacementSubtype
 ),
 
@@ -102,7 +102,7 @@ bid_base AS (
   SUM(bid.SpendInUSD) AS BidSpendInUSD
  FROM `ox-wissp-devint.wissp_views.exchange_views_bid_performance_daily_fact` bid
  INNER JOIN domain_meta dm ON bid.RewrittenPageURLDomain = dm.domain_name
- WHERE bid.ReportDay = '2025-04-11'
+ WHERE bid.ReportDay = '2025-04-16'
  GROUP BY bid.RewrittenPageURLDomain, bid.ReportDay, bid.UserGeoCountry, bid.IABMediaSubtype, bid.IABDistributionChannel, bid.IABVideoPlacementSubtype
 )
 
