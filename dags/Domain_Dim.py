@@ -10,8 +10,8 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# Define tomorrow at 5:30 AM in UTC time
-tomorrow_530am = (datetime.now() + timedelta(days=1)).replace(hour=5, minute=30, second=0, microsecond=0)
+# Start date: today at 07:30 AM UTC
+start_datetime = datetime.utcnow().replace(hour=06, minute=30, second=0, microsecond=0)
 
 
 with DAG(
