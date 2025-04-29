@@ -10,14 +10,14 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# Start date: today at 06:00 AM UTC (which is 11:30 AM IST)
-start_datetime = datetime.utcnow().replace(hour=6, minute=0, second=0, microsecond=0)
+# Use a fixed start date in the past (UTC time)
+start_datetime = datetime(2024, 4, 1, 6, 0, 0)
 
 with DAG(
     dag_id='domain_dim',
     default_args=default_args,
-    description='domain_dim',
-    schedule_interval="0 6 * * *",  # Every day at 06:00 UTC = 11:30 IST
+    description='DAG to update enriched_domain_dim using BigQuery',
+    schedule_interval="0 6 * * *",  # Daily at 06:00 UTC
     start_date=start_datetime,
     catchup=False,
     tags=['bigquery', 'domain_dim', 'enrichment'],
