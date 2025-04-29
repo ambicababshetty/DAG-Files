@@ -24,140 +24,176 @@ with DAG(
         client = bigquery.Client()
 
         sql_query = """        
-        INSERT INTO `ox-wissp-devint.enriched.enriched_domain_performance_fact` (
-         RewrittenPageURLDomain,
-         domain_id,
-         ReportDay,
-         IABDistributionChannel,
-         IABMediaSubtype,
-         UserGeoCountry,
-         VideoPlcmt,
-         ClickThroughRate,
-         TotalSpendInUSD,
-         PublisherRevenueInUSD,
-         RevenuePerImpression,
-         CostPerImpression,
-         TotalMarketRequests,
-         TotalAdRequests,
-         TotalExchangeFills,
-         TotalImpressions,
-         PrivateMarketImpressions,
-         TotalClicks,
-         VTR,
-         Viewability,
-         WinRate,
-         BidRate,
-         bid_cpm,
-         BidGuidance,
-         created_at,
-         last_modified_at
-        )
-        WITH domain_meta AS (
-         SELECT DISTINCT
-          domain_name,
-          uid AS domain_id
-         FROM `ox-wissp-devint.enriched.enriched_domain_dim`
-        ),
+        INSERT INTO `ox-wissp-devint.enriched.enriched_domain_performance_fact_updated` (
+    RewrittenPageURLDomain,
+    domain_id,
+    app_name,
+    ReportDay,
+    IABDistributionChannel,
+    IABMediaSubtype,
+    UserGeoCountry,
+    VideoPlcmt,
+    IABDeviceType,
+    PublisherAccountID,
+    IsDirect,
+    CPRClicks,
+    ImpressionsWithClickMacro,
+    CPRMarketDemandPartnerSpendInUSD,
+    CPRMarketPublisherRevenueInUSD,
+    CPRMarketRequests,
+    CPRAllRequests,
+    CPRPrivateMarketImpressions,
+    CompleteFirstOccurrence,
+    StartFirstOccurrence,
+    Viewables,
+    ViewabilityMeasures,
+    Fills,
+    NonZeroBids,
+    Impressions,
+    DealVolumeDealInfo,
+    NonZeroBidsValueInUSD,
+    BidSpendInUSD,
+    ClickThroughRate,
+    RevenuePerImpression,
+    CostPerImpression,
+    VTR,
+    Viewability,
+    ox_win_rate,
+    pub_win_rate,
+    bid_cpm,
+    Bid_Guidance,
+    created_at,
+    last_modified_at
+)
+WITH domain_meta AS (
+    SELECT DISTINCT
+        domain_name,
+        id AS domain_id,
+        APP_NAME,
+        SourceTable
+    FROM `ox-wissp-devint.enriched.enriched_domain_dim_upt`
+   
+),
+iab_device_type AS (
+    SELECT DISTINCT
+        id,
+        type_name
+    FROM `ox-wissp-devint.wissp_views.exchange_views_iab_device_type_dim`
+),
+cpr_agg AS (
+    SELECT
+        RewrittenPageURLDomain,
+        ReportDay,
+        IABDistributionChannel,
+        IABMediaSubtype,
+        UserGeoCountry,
+        VideoPlcmt,
+        dt.type_name AS IABDeviceType,
+        PublisherAccountID,
+        IsDirect,
+        SUM(Clicks) AS Clicks,
+        SUM(ImpressionsWithClickMacro) AS ImpressionsWithClickMacro,
+        SUM(CPRMarketDemandPartnerSpendInUSD) AS CPRMarketDemandPartnerSpendInUSD,
+        SUM(CPRMarketPublisherRevenueInUSD) AS CPRMarketPublisherRevenueInUSD,
+        SUM(CPRMarketImpressions) AS CPRMarketImpressions,
+        SUM(CPRMarketRequests) AS CPRMarketRequests,
+        SUM(CPRAllRequests) AS CPRAllRequests,
+        SUM(CPRExchangeFills) AS CPRExchangeFills,
+        SUM(CPRPrivateMarketImpressions) AS CPRPrivateMarketImpressions
+    FROM `ox-wissp-devint.wissp_views.exchange_views_cpr_daily_fact_v2` cpr
+    INNER JOIN domain_meta dm ON cpr.RewrittenPageURLDomain = dm.domain_name
+    LEFT JOIN iab_device_type dt ON cpr.IABDeviceType = dt.id
+    WHERE cpr.ReportDay = '2025-04-07'
+    GROUP BY 1,2,3,4,5,6,7,8,9
+),
+bid_agg AS (
+    SELECT
+        RewrittenPageURLDomain,
+        ReportDay,
+        UserGeoCountry,
+        IABMediaSubtype,
+        IABDistributionChannel,
+        dt.type_name AS IABDeviceType,
+        PublisherAccountID,
+        SUM(CompleteFirstOccurrence) AS CompleteFirstOccurrence,
+        SUM(StartFirstOccurrence) AS StartFirstOccurrence,
+        SUM(Viewables) AS Viewables,
+        SUM(ViewabilityMeasures) AS ViewabilityMeasures,
+        SUM(Fills) AS Fills,
+        SUM(NonZeroBids) AS NonZeroBids,
+        SUM(Impressions) AS Impressions,
+        SUM(DealVolumeDealInfo) AS DealVolumeDealInfo,
+        SUM(NonZeroBidsValueInUSD) AS NonZeroBidsValueInUSD,
+        SUM(SpendInUSD) AS BidSpendInUSD
+    FROM `ox-wissp-devint.wissp_views.exchange_views_bid_performance_daily_fact` bid
+    INNER JOIN domain_meta dm ON bid.RewrittenPageURLDomain = dm.domain_name
+    LEFT JOIN iab_device_type dt ON bid.IABDeviceType = dt.id
+    WHERE bid.ReportDay = '2025-04-07'
+    GROUP BY 1,2,3,4,5,6,7
+)
+SELECT DISTINCT
+    dm.domain_name AS RewrittenPageURLDomain,
+    CAST(dm.domain_id AS STRING) AS domain_id,
+    dm.app_name,
+    b.ReportDay,
+    b.IABDistributionChannel,
+    b.IABMediaSubtype,
+    b.UserGeoCountry,
+    c.VideoPlcmt,
+    b.IABDeviceType,
+    CAST(b.PublisherAccountID AS STRING) AS PublisherAccountID,
+    c.IsDirect,
+    c.Clicks AS CPRClicks,
+    c.ImpressionsWithClickMacro,
+    c.CPRMarketDemandPartnerSpendInUSD,
+    c.CPRMarketPublisherRevenueInUSD,
+    c.CPRMarketRequests,
+    c.CPRAllRequests,
+    c.CPRPrivateMarketImpressions,
+    b.CompleteFirstOccurrence,
+    b.StartFirstOccurrence,
+    b.Viewables,
+    b.ViewabilityMeasures,
+    b.Fills,
+    b.NonZeroBids,
+    b.Impressions,
+    b.DealVolumeDealInfo,
+    b.NonZeroBidsValueInUSD,
+    b.BidSpendInUSD,
+    SAFE_DIVIDE(c.Clicks, NULLIF(c.ImpressionsWithClickMacro, 0)) AS ClickThroughRate,
+    SAFE_DIVIDE(c.CPRMarketPublisherRevenueInUSD, NULLIF(c.CPRMarketImpressions, 0)) AS RevenuePerImpression,
+    SAFE_DIVIDE(c.CPRMarketDemandPartnerSpendInUSD, NULLIF(c.CPRMarketImpressions, 0)) AS CostPerImpression,
+    SAFE_DIVIDE(b.CompleteFirstOccurrence, NULLIF(b.StartFirstOccurrence, 0)) * 100 AS VTR,
+    SAFE_DIVIDE(b.Viewables, NULLIF(b.ViewabilityMeasures, 0)) * 100 AS Viewability,
+    SAFE_DIVIDE(b.Fills, NULLIF(b.NonZeroBids, 0)) AS ox_win_rate,
+    SAFE_DIVIDE(b.Impressions, NULLIF(b.Fills, 0)) AS pub_win_rate,
+    SAFE_DIVIDE(b.NonZeroBidsValueInUSD, NULLIF(b.NonZeroBids, 0)) AS bid_cpm,
+    SAFE_DIVIDE(b.BidSpendInUSD, NULLIF(c.CPRMarketImpressions, 0)) AS Bid_Guidance,
+    CURRENT_TIMESTAMP() AS created_at,
+    CURRENT_TIMESTAMP() AS last_modified_at
+FROM domain_meta dm
+INNER JOIN bid_agg b ON dm.domain_name = b.RewrittenPageURLDomain
+LEFT JOIN cpr_agg c ON dm.domain_name = c.RewrittenPageURLDomain
+    AND c.ReportDay = b.ReportDay
+    AND c.UserGeoCountry = b.UserGeoCountry
+    AND c.IABMediaSubtype = b.IABMediaSubtype
+    AND c.IABDistributionChannel = b.IABDistributionChannel
+    AND c.IABDeviceType = b.IABDeviceType
+    AND c.PublisherAccountID = b.PublisherAccountID
+WHERE
+    (COALESCE(SAFE_DIVIDE(c.Clicks, NULLIF(c.ImpressionsWithClickMacro, 0)), 0.0) != 0
+    OR COALESCE(c.CPRMarketDemandPartnerSpendInUSD, 0.0) != 0
+    OR COALESCE(c.CPRMarketPublisherRevenueInUSD, 0.0) != 0
+    OR SAFE_DIVIDE(c.CPRMarketPublisherRevenueInUSD, NULLIF(c.CPRMarketImpressions, 0)) != 0
+    OR SAFE_DIVIDE(c.CPRMarketDemandPartnerSpendInUSD, NULLIF(c.CPRMarketImpressions, 0)) != 0
+    OR SAFE_DIVIDE(b.CompleteFirstOccurrence, NULLIF(b.StartFirstOccurrence, 0)) * 100 != 0
+    OR SAFE_DIVIDE(b.Viewables, NULLIF(b.ViewabilityMeasures, 0)) * 100 != 0
+    OR SAFE_DIVIDE(b.Fills, NULLIF(b.NonZeroBids, 0)) != 0
+    OR SAFE_DIVIDE(b.Impressions, NULLIF(b.Fills, 0)) != 0
+    OR SAFE_DIVIDE(b.NonZeroBidsValueInUSD, NULLIF(b.NonZeroBids, 0)) != 0
+    OR SAFE_DIVIDE(b.BidSpendInUSD, NULLIF(c.CPRMarketImpressions, 0)) != 0
+    );
 
-        cpr_base AS (
-         SELECT
-          cpr.RewrittenPageURLDomain,
-          cpr.ReportDay,
-          cpr.IABDistributionChannel,
-          cpr.IABMediaSubtype,
-          cpr.UserGeoCountry,
-          cpr.VideoPlcmt,
-          cpr.IABVideoPlacementSubtype,
-          SAFE_DIVIDE(SUM(cpr.Clicks), NULLIF(SUM(cpr.ImpressionsWithClickMacro), 0)) AS ClickThroughRate,
-          SUM(cpr.CPRMarketDemandPartnerSpendInUSD) AS TotalSpendInUSD,
-          SUM(cpr.CPRMarketPublisherRevenueInUSD) AS PublisherRevenueInUSD,
-          SAFE_DIVIDE(SUM(cpr.CPRMarketPublisherRevenueInUSD), NULLIF(SUM(cpr.CPRMarketImpressions), 0)) AS RevenuePerImpression,
-          SAFE_DIVIDE(SUM(cpr.CPRMarketDemandPartnerSpendInUSD), NULLIF(SUM(cpr.CPRMarketImpressions), 0)) AS CostPerImpression,
-          SUM(cpr.CPRMarketRequests) AS TotalMarketRequests,
-          SUM(cpr.CPRAllRequests) AS TotalAdRequests,
-          SUM(cpr.CPRExchangeFills) AS TotalExchangeFills,
-          SUM(cpr.CPRMarketImpressions) AS TotalImpressions,
-          SUM(cpr.CPRPrivateMarketImpressions) AS PrivateMarketImpressions,
-          SUM(cpr.Clicks) AS TotalClicks
-         FROM `ox-wissp-devint.wissp_views.exchange_views_cpr_daily_fact_v2` cpr
-         INNER JOIN domain_meta dm ON cpr.RewrittenPageURLDomain = dm.domain_name
-         WHERE cpr.ReportDay = '2025-04-16'
-         GROUP BY cpr.RewrittenPageURLDomain, cpr.ReportDay, cpr.IABDistributionChannel, cpr.IABMediaSubtype, cpr.UserGeoCountry, cpr.VideoPlcmt, cpr.IABVideoPlacementSubtype
-        ),
-
-        bid_base AS (
-         SELECT
-          bid.RewrittenPageURLDomain,
-          bid.ReportDay,
-          bid.UserGeoCountry,
-          bid.IABMediaSubtype,
-          bid.IABDistributionChannel,
-          bid.IABVideoPlacementSubtype,
-          SAFE_DIVIDE(SUM(bid.CompleteFirstOccurrence), NULLIF(SUM(bid.StartFirstOccurrence), 0)) * 100 AS VTR,
-          SAFE_DIVIDE(SUM(bid.Viewables), NULLIF(SUM(bid.ViewabilityMeasures), 0)) * 100 AS Viewability,
-          SAFE_DIVIDE(SUM(bid.Fills), NULLIF(SUM(bid.NonZeroBids), 0)) AS WinRate,
-          SAFE_DIVIDE(SUM(bid.NonZeroBids), NULLIF(SUM(bid.DealVolumeDealInfo), 0)) AS BidRate,
-          SAFE_DIVIDE(SUM(bid.NonZeroBidsValueInUSD), NULLIF(SUM(bid.NonZeroBids), 0)) AS bid_cpm,
-          SUM(bid.SpendInUSD) AS BidSpendInUSD
-         FROM `ox-wissp-devint.wissp_views.exchange_views_bid_performance_daily_fact` bid
-         INNER JOIN domain_meta dm ON bid.RewrittenPageURLDomain = dm.domain_name
-         WHERE bid.ReportDay = '2025-04-16'
-         GROUP BY bid.RewrittenPageURLDomain, bid.ReportDay, bid.UserGeoCountry, bid.IABMediaSubtype, bid.IABDistributionChannel, bid.IABVideoPlacementSubtype
-        )
-
-        SELECT DISTINCT
-         dm.domain_name AS RewrittenPageURLDomain,
-         dm.domain_id,  
-         bid.ReportDay,
-         bid.IABDistributionChannel,
-         bid.IABMediaSubtype,
-         bid.UserGeoCountry,
-         cpr.VideoPlcmt,
-         COALESCE(cpr.ClickThroughRate, 0.0),
-         COALESCE(cpr.TotalSpendInUSD, 0.0),
-         COALESCE(cpr.PublisherRevenueInUSD, 0.0),
-         COALESCE(cpr.RevenuePerImpression, 0.0),
-         COALESCE(cpr.CostPerImpression, 0.0),
-         COALESCE(cpr.TotalMarketRequests, 0),
-         COALESCE(cpr.TotalAdRequests, 0),
-         COALESCE(cpr.TotalExchangeFills, 0),
-         COALESCE(cpr.TotalImpressions, 0),
-         COALESCE(cpr.PrivateMarketImpressions, 0),
-         COALESCE(cpr.TotalClicks, 0),
-         COALESCE(bid.VTR, 0.0),
-         COALESCE(bid.Viewability, 0.0),
-         COALESCE(bid.WinRate, 0.0),
-         COALESCE(bid.BidRate, 0.0),
-         COALESCE(bid.bid_cpm, 0.0),
-         SAFE_DIVIDE(bid.BidSpendInUSD, NULLIF(cpr.TotalImpressions, 0)),
-         CURRENT_TIMESTAMP() AS created_at,
-         CURRENT_TIMESTAMP() AS last_modified_at
-        FROM domain_meta dm
-        INNER JOIN bid_base bid ON dm.domain_name = bid.RewrittenPageURLDomain
-        LEFT JOIN cpr_base cpr ON dm.domain_name = cpr.RewrittenPageURLDomain
-         AND cpr.ReportDay = bid.ReportDay
-         AND cpr.UserGeoCountry = bid.UserGeoCountry
-         AND cpr.IABMediaSubtype = bid.IABMediaSubtype
-         AND cpr.IABDistributionChannel = bid.IABDistributionChannel
-         AND cpr.IABVideoPlacementSubtype = bid.IABVideoPlacementSubtype
-        WHERE
-         COALESCE(cpr.ClickThroughRate, 0.0) != 0
-         OR COALESCE(cpr.TotalSpendInUSD, 0.0) != 0
-         OR COALESCE(cpr.PublisherRevenueInUSD, 0.0) != 0
-         OR COALESCE(cpr.RevenuePerImpression, 0.0) != 0
-         OR COALESCE(cpr.CostPerImpression, 0.0) != 0
-         OR COALESCE(cpr.TotalMarketRequests, 0) != 0
-         OR COALESCE(cpr.TotalAdRequests, 0) != 0
-         OR COALESCE(cpr.TotalExchangeFills, 0) != 0
-         OR COALESCE(cpr.TotalImpressions, 0) != 0
-         OR COALESCE(cpr.PrivateMarketImpressions, 0) != 0
-         OR COALESCE(cpr.TotalClicks, 0) != 0
-         OR COALESCE(bid.VTR, 0.0) != 0
-         OR COALESCE(bid.Viewability, 0.0) != 0
-         OR COALESCE(bid.WinRate, 0.0) != 0
-         OR COALESCE(bid.BidRate, 0.0) != 0
-         OR COALESCE(bid.bid_cpm, 0.0) != 0
-         OR SAFE_DIVIDE(bid.BidSpendInUSD, NULLIF(cpr.TotalImpressions, 0)) != 0;
         """
 
         client.query(sql_query).result()
