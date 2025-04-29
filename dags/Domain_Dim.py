@@ -27,152 +27,67 @@ with DAG(
         client = bigquery.Client()
 
         sql_query = """        
-        MERGE `ox-wissp-devint.enriched.enriched_domain_dim_upt` AS target
-USING (
-WITH max_id AS (
-SELECT IFNULL(MAX(ID), 1000) AS max_existing_id
-FROM `ox-wissp-devint.enriched.enriched_domain_dim_upt`
-),
-new_data AS (
-SELECT
-combined_name AS DOMAIN_NAME,
-APP_NAME,
-SourceTable,
-METACATEGORY_ID,
-METACATEGORY_NAME,
-METACATEGORY_DESCRIPTION,
-METACATEGORY_CODE,
-iab2_tier_1_name,
-iab2_tier_2_name,
-iab2_tier_3_name,
-iab2_tier_4_name,
-CURRENT_TIMESTAMP() AS last_updated_at,
-CURRENT_TIMESTAMP() AS created_at
-FROM (
--- domain_dim
-SELECT
-d.DOMAIN_NAME AS combined_name,
-NA' AS APP_NAME,
-domain_dim' AS SourceTable,
-TRIM(metacategory) AS METACATEGORY_ID,
-m.METACATEGORY_NAME,
-m.METACATEGORY_DESCRIPTION,
-m.METACATEGORY_CODE,
-d.iab2_tier_1_name,
-d.iab2_tier_2_name,
-d.iab2_tier_3_name,
-d.iab2_tier_4_name
-FROM `ox-wissp-devint.wissp_views.exchange_views_domain_dim` d
-LEFT JOIN UNNEST(
-CASE
-WHEN ARRAY_LENGTH(SPLIT(IFNULL(d.METACATEGORY, ''), ',')) = 0 THEN ARRAY<STRING>[NULL]
-ELSE SPLIT(IFNULL(d.METACATEGORY, ''), ',')
-END
-) AS metacategory
-LEFT JOIN `ox-wissp-devint.enriched.enriched_metacategory_dim` m
-ON TRIM(metacategory) = CAST(m.METACATEGORY_ID AS STRING)
-WHERE d.DOMAIN_NAME IS NOT NULL AND d.DOMAIN_NAME <> ''
+        MERGE `ox-wissp-devint.enriched.enriched_domain_dim` AS T
+        USING (
+            SELECT
+                d.DOMAIN_NAME,
+                TRIM(metacategory) AS METACATEGORY_ID,
+                m.METACATEGORY_NAME,
+                m.METACATEGORY_DESCRIPTION,
+                m.METACATEGORY_CODE,
+                d.iab2_tier_1_name,
+                d.iab2_tier_2_name,
+                d.iab2_tier_3_name,
+                d.iab2_tier_4_name,
+                CURRENT_TIMESTAMP() AS update_time,
+                COALESCE(domain_lookup.uid, GENERATE_UUID()) AS UID
+            FROM `ox-wissp-devint.wissp_views.exchange_views_domain_dim` d
+            LEFT JOIN UNNEST(SPLIT(IFNULL(d.METACATEGORY, ''), ',')) AS metacategory
+            LEFT JOIN `ox-wissp-devint.enriched.enriched_metacategory_dim` m
+                ON TRIM(metacategory) = CAST(m.UID AS STRING)
+            LEFT JOIN (
+                SELECT DISTINCT domain_name, uid
+                FROM `ox-wissp-devint.enriched.enriched_domain_dim`
+                WHERE uid IS NOT NULL
+            ) AS domain_lookup
+                ON d.DOMAIN_NAME = domain_lookup.domain_name
+        ) AS S
+        ON T.DOMAIN_NAME = S.DOMAIN_NAME AND T.METACATEGORY_ID = S.METACATEGORY_ID
 
-UNION ALL
+        WHEN MATCHED AND (
+            T.METACATEGORY_NAME != S.METACATEGORY_NAME OR
+            T.METACATEGORY_DESCRIPTION != S.METACATEGORY_DESCRIPTION OR
+            T.METACATEGORY_CODE != S.METACATEGORY_CODE OR
+            T.IAB2_TIER_1_NAME != S.IAB2_TIER_1_NAME OR
+            T.IAB2_TIER_2_NAME != S.IAB2_TIER_2_NAME OR
+            T.IAB2_TIER_3_NAME != S.IAB2_TIER_3_NAME OR
+            T.IAB2_TIER_4_NAME != S.IAB2_TIER_4_NAME
+        )
+        THEN UPDATE SET
+            METACATEGORY_NAME = S.METACATEGORY_NAME,
+            METACATEGORY_DESCRIPTION = S.METACATEGORY_DESCRIPTION,
+            METACATEGORY_CODE = S.METACATEGORY_CODE,
+            IAB2_TIER_1_NAME = S.IAB2_TIER_1_NAME,
+            IAB2_TIER_2_NAME = S.IAB2_TIER_2_NAME,
+            IAB2_TIER_3_NAME = S.IAB2_TIER_3_NAME,
+            IAB2_TIER_4_NAME = S.IAB2_TIER_4_NAME,
+            last_modified_at = S.update_time
 
--- bundle_dim
-SELECT
-b.BUNDLE_ID AS combined_name,
-b.APP_NAME,
-bundle_dim' AS SourceTable,
-TRIM(meta_cat) AS METACATEGORY_ID,
-m.METACATEGORY_NAME,
-m.METACATEGORY_DESCRIPTION,
-m.METACATEGORY_CODE,
-b.IAB2_TIER_1_NAME,
-b.IAB2_TIER_2_NAME,
-b.IAB2_TIER_3_name,
-b.IAB2_TIER_4_name
-FROM `ox-wissp-devint.wissp_views.exchange_views_bundle_dim` b
-LEFT JOIN UNNEST(
-CASE
-WHEN ARRAY_LENGTH(SPLIT(IFNULL(b.METACATEGORY, ''), ',')) = 0 THEN ARRAY<STRING>[NULL]
-ELSE SPLIT(IFNULL(b.METACATEGORY, ''), ',')
-END
-) AS meta_cat
-LEFT JOIN `ox-wissp-devint.enriched.enriched_metacategory_dim` m
-ON TRIM(meta_cat) = CAST(m.METACATEGORY_ID AS STRING)
-WHERE b.BUNDLE_ID IS NOT NULL AND b.BUNDLE_ID <> ''
-)
-),
-
-domain_id_map AS (
-SELECT
-d.DOMAIN_NAME,
-COALESCE(existing.ID, max_id.max_existing_id + ROW_NUMBER() OVER (ORDER BY d.DOMAIN_NAME)) AS ID
-FROM (
-SELECT DISTINCT DOMAIN_NAME FROM new_data
-) d
-LEFT JOIN `ox-wissp-devint.enriched.enriched_domain_dim_upt` existing
-ON d.DOMAIN_NAME = existing.DOMAIN_NAME
-CROSS JOIN max_id
-),
-
-data_with_id AS (
-SELECT
-d.*,
-id_map.ID
-FROM new_data d
-LEFT JOIN domain_id_map id_map
-ON d.DOMAIN_NAME = id_map.DOMAIN_NAME
-)
-
-SELECT * FROM data_with_id
-) AS source
-ON target.DOMAIN_NAME = source.DOMAIN_NAME
-AND target.METACATEGORY_ID = source.METACATEGORY_ID -- optional for multi-category
-WHEN MATCHED THEN
-UPDATE SET
-target.APP_NAME = source.APP_NAME,
-target.SourceTable = source.SourceTable,
-target.METACATEGORY_ID = source.METACATEGORY_ID,
-target.METACATEGORY_NAME = source.METACATEGORY_NAME,
-target.METACATEGORY_DESCRIPTION = source.METACATEGORY_DESCRIPTION,
-target.METACATEGORY_CODE = source.METACATEGORY_CODE,
-target.iab2_tier_1_name = source.iab2_tier_1_name,
-target.iab2_tier_2_name = source.iab2_tier_2_name,
-target.iab2_tier_3_name = source.iab2_tier_3_name,
-target.iab2_tier_4_name = source.iab2_tier_4_name,
-target.last_updated_at = source.last_updated_at,
-target.created_at = source.created_at
-WHEN NOT MATCHED THEN
-INSERT (
-ID,
-DOMAIN_NAME,
-APP_NAME,
-SourceTable,
-METACATEGORY_ID,
-METACATEGORY_NAME,
-METACATEGORY_DESCRIPTION,
-METACATEGORY_CODE,
-iab2_tier_1_name,
-iab2_tier_2_name,
-iab2_tier_3_name,
-iab2_tier_4_name,
-last_updated_at,
-created_at
-)
-VALUES (
-source.ID,
-source.DOMAIN_NAME,
-source.APP_NAME,
-source.SourceTable,
-source.METACATEGORY_ID,
-source.METACATEGORY_NAME,
-source.METACATEGORY_DESCRIPTION,
-source.METACATEGORY_CODE,
-source.iab2_tier_1_name,
-source.iab2_tier_2_name,
-source.iab2_tier_3_name,
-source.iab2_tier_4_name,
-source.last_updated_at,
-source.created_at
-);
+        WHEN NOT MATCHED THEN
+        INSERT (
+            DOMAIN_NAME, METACATEGORY_ID, METACATEGORY_NAME,
+            METACATEGORY_DESCRIPTION, METACATEGORY_CODE,
+            IAB2_TIER_1_NAME, IAB2_TIER_2_NAME,
+            IAB2_TIER_3_NAME, IAB2_TIER_4_NAME,
+            created_at, last_modified_at, uid
+        )
+        VALUES (
+            S.DOMAIN_NAME, S.METACATEGORY_ID, S.METACATEGORY_NAME,
+            S.METACATEGORY_DESCRIPTION, S.METACATEGORY_CODE,
+            S.IAB2_TIER_1_NAME, S.IAB2_TIER_2_NAME,
+            S.IAB2_TIER_3_NAME, S.IAB2_TIER_4_NAME,
+            S.update_time, S.update_time, S.UID
+        );
         """
 
         client.query(sql_query).result()
